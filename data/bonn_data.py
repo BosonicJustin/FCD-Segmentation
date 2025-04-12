@@ -50,3 +50,45 @@ class BonnMRIDataset(Dataset):
             sample = self.transform(sample)
 
         return sample
+
+
+class BonnMRIClassificationDataset(Dataset):
+    def __init__(self, root_dir, transform=None):
+        self.root_dir = root_dir
+        self.transform = transform
+        self.subjects = sorted([d for d in os.listdir(root_dir) if d.startswith("sub-")])
+
+    def __len__(self):
+        return len(self.subjects)
+
+    def __getitem__(self, idx):
+        subject_id = self.subjects[idx]
+        anat_path = os.path.join(self.root_dir, subject_id, "anat")
+
+        # Only FLAIR path
+        flair_path = os.path.join(anat_path, f"{subject_id}_acq-T2sel_FLAIR.nii.gz")
+        roi_path = os.path.join(anat_path, f"{subject_id}_acq-T2sel_FLAIR_roi.nii.gz")
+
+        # Load FLAIR image
+        flair_img = nib.load(flair_path).get_fdata()
+        flair_tensor = torch.from_numpy(flair_img).float().unsqueeze(0)
+
+        # Construct sample
+        sample = {
+            'FLAIR': flair_tensor,
+            'subject_id': subject_id,
+        }
+
+        # Load ROI and derive binary label
+        if os.path.exists(roi_path):
+            roi_img = nib.load(roi_path).get_fdata()
+            label = torch.tensor(int(torch.from_numpy(roi_img).long().any()), dtype=torch.long)
+        else:
+            label = torch.tensor(0, dtype=torch.long)
+
+        sample['label'] = label
+
+        if self.transform:
+            sample = self.transform(sample)
+
+        return sample

@@ -2,6 +2,7 @@ import os
 import nibabel as nib
 import torch
 from torch.utils.data import Dataset
+import glob
 
 
 class BonnMRIDataset(Dataset):
@@ -65,30 +66,47 @@ class BonnMRIClassificationDataset(Dataset):
         subject_id = self.subjects[idx]
         anat_path = os.path.join(self.root_dir, subject_id, "anat")
 
-        # Only FLAIR path
-        flair_path = os.path.join(anat_path, f"{subject_id}_acq-T2sel_FLAIR.nii.gz")
-        roi_path = os.path.join(anat_path, f"{subject_id}_acq-T2sel_FLAIR_roi.nii.gz")
+        # Use glob to find FLAIR and optional ROI file
+        flair_files = glob.glob(os.path.join(anat_path, "*FLAIR.nii.gz"))
+        roi_files = glob.glob(os.path.join(anat_path, "*FLAIR_roi.nii.gz"))
+
+        assert len(flair_files) == 1, f"Expected one FLAIR file for {subject_id}, found {len(flair_files)}"
+        flair_path = flair_files[0]
+        roi_path = roi_files[0] if roi_files else None
 
         # Load FLAIR image
         flair_img = nib.load(flair_path).get_fdata()
         flair_tensor = torch.from_numpy(flair_img).float().unsqueeze(0)
 
-        # Construct sample
-        sample = {
-            'FLAIR': flair_tensor,
-            'subject_id': subject_id,
-        }
-
-        # Load ROI and derive binary label
-        if os.path.exists(roi_path):
+        # Binary label: 1 if ROI contains any positive voxels, else 0
+        if roi_path is not None:
             roi_img = nib.load(roi_path).get_fdata()
-            label = torch.tensor(int(torch.from_numpy(roi_img).long().any()), dtype=torch.long)
+            label = torch.tensor(int(roi_img.any()), dtype=torch.long)
         else:
             label = torch.tensor(0, dtype=torch.long)
 
-        sample['label'] = label
+        sample = {
+            'FLAIR': flair_tensor,
+            'subject_id': subject_id,
+            'label': label
+        }
 
         if self.transform:
             sample = self.transform(sample)
 
         return sample
+    
+
+class OverfittingDataset(Dataset):
+    def __init__(self, bonn_dataset, num_samples=5):
+        self.bonn_dataset = bonn_dataset
+        self.num_samples = num_samples
+
+    def __len__(self):
+        return self.num_samples if self.num_samples else 0
+    
+    def __getitem__(self, idx):
+        if idx > self.num_samples:
+            raise IndexError("Index out of range for the overfitting dataset.")
+        
+        return self.bonn_dataset[idx]

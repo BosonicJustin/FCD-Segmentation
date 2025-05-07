@@ -43,15 +43,13 @@ class FCDDetector(nn.Module):
             for param in self.encoder.parameters():
                 param.requires_grad = False
 
-        self.projector = nn.Linear(latent_dim, 2)
+        self.projector = nn.Linear(latent_dim, 1)
 
         # Combine encoder and projector into a single sequential model
         self.classifier = nn.Sequential(
             self.encoder,
             self.projector
         )
-
-        self.loss = nn.BCELoss()  # or any other appropriate loss
 
     def forward(self, x):
         return self.classifier(x)

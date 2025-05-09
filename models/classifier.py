@@ -51,5 +51,24 @@ class FCDDetector(nn.Module):
             self.projector
         )
 
+    def get_trainable_parameters(self):
+        return [param for param in self.parameters() if param.requires_grad]
+
+    def reset_parameters(self):
+        """
+        Reset only the trainable parameters of the model.
+        In this case, it means resetting the projector (linear layer).
+        """
+        # Reset the projector layer
+        if hasattr(self, 'projector'):
+            # Xavier/Glorot initialization for the linear layer
+            nn.init.xavier_uniform_(self.projector.weight)
+            if self.projector.bias is not None:
+                nn.init.zeros_(self.projector.bias)
+        
+        # Ensure encoder remains frozen
+        for param in self.encoder.parameters():
+            param.requires_grad = False
+
     def forward(self, x):
         return self.classifier(x)

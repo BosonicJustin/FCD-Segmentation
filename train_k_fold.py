@@ -66,6 +66,11 @@ def train_and_validate_fold(model, train_loader, val_loader, criterion, optimize
         val_loss = 0.0
         correct_predictions = 0
         total_predictions = 0
+        
+        # Initialize metric accumulators for entire validation set
+        total_true_positives = 0
+        total_false_positives = 0
+        total_false_negatives = 0
 
         with torch.no_grad():
             for val_batch_idx, val_batch in enumerate(val_loader, 1):
@@ -83,26 +88,34 @@ def train_and_validate_fold(model, train_loader, val_loader, criterion, optimize
                 correct_predictions += (predicted == val_labels).sum().item()
                 total_predictions += val_labels.size(0)
 
-                # Calculate precision, recall, and F1
-                true_positives = ((predicted == 1) & (val_labels == 1)).sum().item()
-                false_positives = ((predicted == 1) & (val_labels == 0)).sum().item()
-                false_negatives = ((predicted == 0) & (val_labels == 1)).sum().item()
-
-                precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0
-                recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) > 0 else 0
+                # Accumulate confusion matrix components across all validation batches
+                batch_true_positives = ((predicted == 1) & (val_labels == 1)).sum().item()
+                batch_false_positives = ((predicted == 1) & (val_labels == 0)).sum().item()
+                batch_false_negatives = ((predicted == 0) & (val_labels == 1)).sum().item()
                 
-                # F1 Score
-                f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+                total_true_positives += batch_true_positives
+                total_false_positives += batch_false_positives
+                total_false_negatives += batch_false_negatives
 
-                # Print validation progress
+                # Calculate batch-level metrics for progress reporting only
+                batch_precision = batch_true_positives / (batch_true_positives + batch_false_positives) if (batch_true_positives + batch_false_positives) > 0 else 0
+                batch_recall = batch_true_positives / (batch_true_positives + batch_false_negatives) if (batch_true_positives + batch_false_negatives) > 0 else 0
+                batch_f1 = 2 * (batch_precision * batch_recall) / (batch_precision + batch_recall) if (batch_precision + batch_recall) > 0 else 0
+
+                # Print validation progress (batch-level metrics for monitoring)
                 print(f"Validation Batch [{val_batch_idx}/{len(val_loader)}], "
-                      f"Loss: {val_loss:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}")
+                      f"Loss: {val_loss/(val_batch_idx):.4f}, Batch Precision: {batch_precision:.4f}, Batch Recall: {batch_recall:.4f}, Batch F1: {batch_f1:.4f}")
 
                 # Free up memory
                 del val_inputs, val_labels, val_outputs
                 torch.cuda.empty_cache()
 
             val_accuracy = correct_predictions / total_predictions
+            
+            # Calculate final metrics across entire validation set
+            precision = total_true_positives / (total_true_positives + total_false_positives) if (total_true_positives + total_false_positives) > 0 else 0
+            recall = total_true_positives / (total_true_positives + total_false_negatives) if (total_true_positives + total_false_negatives) > 0 else 0
+            f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
 
             # Store metrics
             train_losses.append(running_loss / len(train_loader))
